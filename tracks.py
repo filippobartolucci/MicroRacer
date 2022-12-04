@@ -449,6 +449,8 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
     states = []
     xdatas = []
     ydatas = []
+    actors, names = zip(*actors)
+
     for i, actor in enumerate(actors):
         racer = Racer(obstacles, turn_limit, chicanes, low_speed_termination)
         racers.append(racer)
@@ -516,7 +518,7 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
         a = []
         [a.append("") for z in range(len(actors))]
         for j, actor in enumerate(actors):
-            label = ''
+            label = '' + names[j] + ':'
             if not racers[j].done:
                 if racers[j].cartheta < 0:
                     order[j]=racers[j].cartheta+2*np.pi
@@ -579,7 +581,7 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
     
     print("###SCOREBOARD###")
     for i, carn in enumerate(podium):
-        print("{}° place : Car N.{}".format(i+1, carn+1))
+        print("{}° place : Car N.{}, {}".format(i+1, carn+1, names[carn]))
     for i, racer in enumerate(racers):
         if racer.completation == 2:
             print("Car N.{} went off road".format(i+1))

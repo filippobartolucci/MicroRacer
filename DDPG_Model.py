@@ -9,8 +9,11 @@ import tracks
 
 
 class DDPG_Model():
-    def __init__(self, tot_it = 50000, gamma = 0.99, tau = 0.005, clr = 0.001, alr = 0.001) -> None:
+    def __init__(self, tot_it = 60000, gamma = 0.99, tau = 0.005, clr = 0.001, alr = 0.001) -> None:
+        # Environment
         self.racer = tracks.Racer()
+
+        # Hyperparameters for training
         self.total_iterations = tot_it
         self.gamma = gamma
         self.tau = tau
@@ -20,15 +23,19 @@ class DDPG_Model():
         self.num_actions = 2
         self.upper_bound = 1
         self.lower_bound = -1
-        self.buffer_dim = 50000
+        self.buffer_dim = 100000
         self.batch_size = 64
+
+        # Models for Actor and Critic
         self.actor_model = None
         self.critic_model = None
 
+    # Load weights for actor and critic
     def load_weight(self, weights_file_critic="weights/ddpg_critic_model_car",  weights_file_actor="weights/ddpg_actor_model_car"):
         self.critic_model = keras.models.load_model(weights_file_critic)
         self.actor_model = keras.models.load_model(weights_file_actor)
 
+    # Save weights for actor and critic
     def save_weight(self, weights_file_critic= "weights/ddpg_critic_model_car",  weights_file_actor = "weights/ddpg_actor_model_car"):
         if (self.actor_model == None or self.critic_model == None):
             print("  - Actor or Critis is none, models can't be saved! ")
@@ -36,6 +43,7 @@ class DDPG_Model():
         self.critic_model.save(weights_file_critic)
         self.actor_model.save(weights_file_actor)
 
+    # Get actor network
     def get_actor(self, train_acceleration = True, train_direction = True):
         # the actor has separate towers for action and speed
         # in this way we can train them separately
@@ -59,6 +67,7 @@ class DDPG_Model():
         model = tf.keras.Model(inputs, outputs, name="actor")
         return model
 
+    # Get critic network
     def get_critic(self):
         # State as input
         state_input = layers.Input(shape=(self.num_states))
@@ -83,9 +92,6 @@ class DDPG_Model():
         state_input = layers.Input(shape=(self.num_states))
         a = actor(state_input)
         q = critic([state_input, a])
-        #reg_weights = actor.get_layer('out').get_weights()[0]
-        #print(tf.reduce_sum(0.01 * tf.square(reg_weights)))
-
         m = tf.keras.Model(state_input, q)
         #the loss function of the compound model is just the opposite of the critic output
         m.add_loss(-q)
@@ -102,7 +108,7 @@ class DDPG_Model():
                     reward += t_r
             return (state, reward, done)
 
-    def policy(self, actor_model, state, verbose=False):
+    def policy(self, actor_model, state):
         #the policy used for training just add noise to the action
         #the amount of noise is kept constant during training
         sampled_action = tf.squeeze(actor_model(state))
@@ -113,9 +119,9 @@ class DDPG_Model():
         # Adding noise to action
         sampled_action = sampled_action.numpy()
         sampled_action += noise
-        #in verbose mode, we may print information about selected actions
-        if verbose and sampled_action[0] < 0:
-            print("decelerating")
+  
+        # if sampled_action[0] < 0:
+        #     print("decelerating")
 
         #Finally, we ensure actions are within bounds
         legal_action = np.clip(sampled_action, self.lower_bound, self.upper_bound)
@@ -132,31 +138,18 @@ class DDPG_Model():
         target_actor.trainable = False
         target_critic.trainable = False
 
-        #We compose actor and critic in a single model.
-        #The actor is trained by maximizing the future expected reward, estimated
-        #by the critic. The critic should be freezed while training the actor.
-        #For simplicitly, we just use the target critic, that is not trainable.
-
         aux_model = self.compose(actor_model, target_critic)
 
-        ## TRAINING ##
-        # if load_weights:
-        #     critic_model = keras.models.load_model(weights_file_critic)
-        #     actor_model = keras.models.load_model(weights_file_actor)
-
-        # Making the weights equal initially
         target_actor_weights = actor_model.get_weights()
         target_critic_weights = critic_model.get_weights()
         target_actor.set_weights(target_actor_weights)
         target_critic.set_weights(target_critic_weights)
-
 
         critic_optimizer = tf.keras.optimizers.Adam(self.critic_lr)
         aux_optimizer = tf.keras.optimizers.Adam(self.aux_lr)
 
         critic_model.compile(loss='mse', optimizer=critic_optimizer)
         aux_model.compile(optimizer=aux_optimizer)
-
 
         buffer = Buffer(self.num_states, self.num_actions, self.buffer_dim, self.batch_size)
 
@@ -256,6 +249,11 @@ class DDPG_Model():
             raise Exception("Model is equal to None and can't be exported")
         return self.actor_model
 
+    def test(self):
+        racer = (self.actor_model, "DDPG")
+        tracks.newrun(racer)
+
+
         
 
 
@@ -319,8 +317,8 @@ def update_weights(target_weights, weights, tau):
 
 
 model = DDPG_Model()
-# model.load_weight()
-model.train()
+model.load_weight()
+# model.train()
 # model.save_weight()
 
-tracks.newrun([model.get_actor_model()])
+model.test()

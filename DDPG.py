@@ -12,7 +12,7 @@ racer = tracks.Racer()
 ########################################
 ###### HYPERPARAMETERS #################
 
-total_iterations = 50000
+total_iterations = 1000
 # Discount factor
 gamma = 0.99
 # Target network parameter update factor, for double DQN
@@ -30,7 +30,10 @@ lower_bound = -1
 print("Min and Max Value of Action: {}".format(lower_bound,upper_bound))
 
 buffer_dim = 50000
-batch_size = 64
+batch_size = 2048 * 32
+
+# disable gpu 
+
 
 
 is_training = True
@@ -326,6 +329,6 @@ if is_training:
     end_t = datetime.now()
     print("Time elapsed: {}".format(end_t-start_t))
 
-tracks.newrun([actor_model])
+tracks.newrun([(actor_model, "DDPG")])
 
 

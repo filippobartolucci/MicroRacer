@@ -242,6 +242,7 @@ def step(action):
             reward+=t_r
     return (state, reward, done)
 
+
 @tf.function 
 def update_critics(states, actions, rewards, dones, newstates):
     entropy_scale = tf.convert_to_tensor(alpha)
@@ -259,6 +260,7 @@ def update_critics(states, actions, rewards, dones, newstates):
     critic1_gradient = tape1.gradient(loss_c1, critic_model.trainable_variables)
     critic_model.optimizer.apply_gradients(zip(critic1_gradient, critic_model.trainable_variables))
 
+
 @tf.function    
 def update_actor(states):
     entropy_scale = tf.convert_to_tensor(alpha)
@@ -271,11 +273,14 @@ def update_actor(states):
     actor_gradient = tape.gradient(actor_loss, actor_model.trainable_variables)
     actor_model.optimizer.apply_gradients(zip(actor_gradient, actor_model.trainable_variables))
 
+
 @tf.function
 def update_entropy(states):
     _, _, log_probs = actor_model(states)
+    
     with tf.GradientTape() as tape:
         alpha_loss = tf.reduce_mean(- alpha*tf.stop_gradient(log_probs + target_entropy))
+
     alpha_grad = tape.gradient(alpha_loss, [log_alpha])
     alpha_optimizer.apply_gradients(zip(alpha_grad, [log_alpha]))
 

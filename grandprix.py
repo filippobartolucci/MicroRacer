@@ -9,7 +9,6 @@ import tracks
 import os
 
 
-
 class Model:
     def __init__(self):
         return
@@ -21,6 +20,7 @@ class Model:
         return self.actor_model
 
 models = []
+
 
 for file in os.listdir("weights"):
 

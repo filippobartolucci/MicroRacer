@@ -2,41 +2,32 @@ from datetime import datetime
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow import keras
-from tensorflow.keras import regularizers
 import numpy as np
 import matplotlib.pyplot as plt
 import tracks
+import random
 
 
 class DDPG_Model():
-    def __init__(self, tot_it = 60000, gamma = 0.99, tau = 0.005, clr = 0.001, alr = 0.001) -> None:
+    def __init__(self) -> None:
         # Environment
         self.racer = tracks.Racer()
-
-        # Hyperparameters for training
-        self.total_iterations = tot_it
-        self.gamma = gamma
-        self.tau = tau
-        self.critic_lr = clr
-        self.aux_lr = alr
         self.num_states = 5
         self.num_actions = 2
         self.upper_bound = 1
         self.lower_bound = -1
-        self.buffer_dim = 100000
-        self.batch_size = 64
 
         # Models for Actor and Critic
-        self.actor_model = None
-        self.critic_model = None
+        self.actor_model = self.get_actor()
+        self.critic_model = self.get_critic()
 
     # Load weights for actor and critic
-    def load_weight(self, weights_file_critic="weights/ddpg_critic_model_car",  weights_file_actor="weights/ddpg_actor_model_car"):
+    def load_weights(self, weights_file_critic="weights/ddpg_critic_model_car",  weights_file_actor="weights/ddpg_actor_model_car"):
         self.critic_model = keras.models.load_model(weights_file_critic)
         self.actor_model = keras.models.load_model(weights_file_actor)
 
     # Save weights for actor and critic
-    def save_weight(self, weights_file_critic= "weights/ddpg_critic_model_car",  weights_file_actor = "weights/ddpg_actor_model_car"):
+    def save_weights(self, weights_file_critic= "weights/ddpg_critic_model_car",  weights_file_actor = "weights/ddpg_actor_model_car"):
         if (self.actor_model == None or self.critic_model == None):
             print("  - Actor or Critis is none, models can't be saved! ")
             return
@@ -49,16 +40,12 @@ class DDPG_Model():
         # in this way we can train them separately
 
         inputs = layers.Input(shape=(self.num_states,))
-        out1 = layers.Dense(32, activation="relu",
-                            trainable=train_acceleration)(inputs)
-        out1 = layers.Dense(32, activation="relu",
-                            trainable=train_acceleration)(out1)
-        out1 = layers.Dense(1, activation='tanh',
-                            trainable=train_acceleration)(out1)
+        out1 = layers.Dense(64, activation="leaky_relu", trainable=train_acceleration)(inputs)
+        out1 = layers.Dense(32, activation="gelu", trainable=train_acceleration)(out1)
+        out1 = layers.Dense(1, activation='tanh', trainable=train_acceleration)(out1)
 
-        out2 = layers.Dense(32, activation="relu",
-                            trainable=train_direction)(inputs)
-        out2 = layers.Dense(32, activation="relu", trainable=train_direction)(out2)
+        out2 = layers.Dense(64, activation="leaky_relu",trainable=train_direction)(inputs)
+        out2 = layers.Dense(32, activation="gelu", trainable=train_direction)(out2)
         out2 = layers.Dense(1, activation='tanh', trainable=train_direction)(out2)
 
         outputs = layers.concatenate([out1, out2])
@@ -71,17 +58,17 @@ class DDPG_Model():
     def get_critic(self):
         # State as input
         state_input = layers.Input(shape=(self.num_states))
-        state_out = layers.Dense(16, activation="relu")(state_input)
-        state_out = layers.Dense(32, activation="relu")(state_out)
+        state_out = layers.Dense(32, activation="gelu")(state_input)
+        state_out = layers.Dense(64, activation="gelu")(state_out)
 
         # Action as input
         action_input = layers.Input(shape=(self.num_actions))
-        action_out = layers.Dense(32, activation="relu")(action_input)
+        action_out = layers.Dense(32, activation="gelu")(action_input)
 
         concat = layers.Concatenate()([state_out, action_out])
 
-        out = layers.Dense(64, activation="relu")(concat)
-        out = layers.Dense(64, activation="relu")(out)
+        out = layers.Dense(64, activation="gelu")(concat)
+        out = layers.Dense(64, activation="gelu")(out)
         outputs = layers.Dense(1)(out)  # Outputs single value
 
         model = tf.keras.Model([state_input, action_input], outputs, name="critic")
@@ -108,33 +95,40 @@ class DDPG_Model():
                     reward += t_r
             return (state, reward, done)
 
-    def policy(self, actor_model, state):
-        #the policy used for training just add noise to the action
-        #the amount of noise is kept constant during training
+    def policy(self, actor_model, state, random = False, it = 1):
+        if random:
+            return [np.random.uniform(self.lower_bound, self.upper_bound, size=2)]
+
         sampled_action = tf.squeeze(actor_model(state))
         noise = np.random.normal(scale=0.1, size=2)
-        #we may change the amount of noise for actions during training
-        noise[0] *= 2
+
+        noise[0] *= 2 
         noise[1] *= .5
-        # Adding noise to action
+
         sampled_action = sampled_action.numpy()
         sampled_action += noise
-  
-        # if sampled_action[0] < 0:
-        #     print("decelerating")
 
-        #Finally, we ensure actions are within bounds
         legal_action = np.clip(sampled_action, self.lower_bound, self.upper_bound)
 
         return [np.squeeze(legal_action)]
 
-    def train(self):
+    def train(self, tot_it=50000, batch_size = 64, gamma=0.99, tau=0.005, clr=0.001, alr=0.001, new_model = False):
+        # Hyperparameters for training
+        self.total_iterations = tot_it
+        self.gamma = gamma
+        self.tau = tau
+        self.critic_lr = clr
+        self.aux_lr = alr
+        self.buffer_dim = 50000
+        self.batch_size = batch_size
 
+        
         actor_model = self.get_actor()
         critic_model = self.get_critic()
 
         target_actor = self.get_actor()
         target_critic = self.get_critic()
+
         target_actor.trainable = False
         target_critic.trainable = False
 
@@ -164,6 +158,7 @@ class DDPG_Model():
         mean_speed = 0
         ep = 0
         avg_reward = 0
+        random = True
 
         start_t = datetime.now()
         while i < self.total_iterations:
@@ -172,12 +167,15 @@ class DDPG_Model():
             episodic_reward = 0
             mean_speed += prev_state[self.num_states-1]
             done = False
+            
+
 
             while not(done):
                 i = i+1
                 tf_prev_state = tf.expand_dims(tf.convert_to_tensor(prev_state), 0)
-                #our policy is always noisy
-                action = self.policy(actor_model, tf_prev_state)[0]
+                
+                action = self.policy(actor_model, tf_prev_state, random=random, it = i)[0]
+                
                 # Get state and reward from the environment
                 state, reward, done = self.step(action)
 
@@ -189,7 +187,7 @@ class DDPG_Model():
 
                 if not(done):
                     mean_speed += state[self.num_states-1]
-
+                
                 episodic_reward += reward
 
                 if buffer.buffer_counter >self.batch_size:
@@ -200,10 +198,9 @@ class DDPG_Model():
                     loss1 = critic_model.train_on_batch([states, actions], targetQ)
                     loss2 = aux_model.train_on_batch(states)
 
-                    update_target(target_actor.variables,
-                                actor_model.variables, self.tau)
-                    update_target(target_critic.variables,
-                                critic_model.variables, self.tau)
+                    update_target(target_actor.variables, actor_model.variables, self.tau)
+                    update_target(target_critic.variables, critic_model.variables, self.tau)
+                
                 prev_state = state
 
                 if i % 100 == 0:
@@ -218,15 +215,12 @@ class DDPG_Model():
             print("\n")
 
             if ep > 0 and ep % 40 == 0:
+                random = False
                 print("## Evaluating policy ##")
                 tracks.metrics_run(actor_model, 10)
             ep += 1
 
         if self.total_iterations > 0:
-            # if save_weights:
-            #     critic_model.save(weights_file_critic)
-            #     actor_model.save(weights_file_actor)
-           
             self.plot_rewards(avg_reward_list)
         
         end_t = datetime.now()
@@ -249,14 +243,6 @@ class DDPG_Model():
             raise Exception("Model is equal to None and can't be exported")
         return self.actor_model
 
-    def test(self):
-        racer = (self.actor_model, "DDPG")
-        tracks.newrun(racer)
-
-
-        
-
-
 
 #Replay buffer 
 class Buffer:
@@ -265,7 +251,6 @@ class Buffer:
         self.buffer_capacity = buffer_capacity
         # Num of tuples used for training
         self.batch_size = batch_size
-
         # Current number of tuples in buffer
         self.buffer_counter = 0
 
@@ -314,11 +299,41 @@ def update_weights(target_weights, weights, tau):
     return(target_weights * (1 - tau) + weights * tau)
 
 
+while True:
+    print("### DDPG Training started ###")
+    model = DDPG_Model()
+      
+    tot_iterations = random.choice([45000, 50000, 53000, 55000, 57000, 60000])
+    batch_size = 64
+    tau = random.choice([0.001, 0.005, 0.01, 0.05, 0.1])
+    gamma = random.choice([0.9, 0.95, 0.99, 0.999])
 
+    
+    print("\n\n### Hyperparameters: ###")
+    print("Total iterations: \t{}".format(tot_iterations))
+    print("Batch size: \t{}".format(batch_size))
+    print("Tau: \t{}".format(tau))
+    print("Gamma: \t{}".format(gamma))
 
-model = DDPG_Model()
-model.load_weight()
-# model.train()
-# model.save_weight()
+    print("\n\n### Training ###")
+    start = datetime.now()
+    model.train(tot_it= tot_iterations, batch_size=batch_size, tau=tau, gamma=gamma)
+    model.save_weights()
+    end = datetime.now()
+    print("### DDPG Training ended ###")
+    print("Time elapsed: {}\n".format(end-start))
 
-model.test()
+    best_model = DDPG_Model()
+    best_model.load_weights(weights_file_actor="weights/best_ddpg_actor")
+
+    models = [(best_model.get_actor_model(), "best"), (model.get_actor_model(), "trained")]
+
+    print("### Evaluating model against best ###")
+    winner1 = tracks.newrun(models)
+    winner2 = tracks.newrun(models)
+
+    if winner1 == "trained" and winner2 == "trained":
+        model.save_weights(weights_file_actor="weights/best_ddpg_actor")
+        print("### New best model saved")
+        
+

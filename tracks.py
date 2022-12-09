@@ -513,6 +513,7 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
         while not(all(racer.done for racer in racers)):
             n += 1
             yield n
+        plt.close("all")
             
     def animate(i):
         a = []
@@ -573,6 +574,9 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
             max_angle = racers[0].max_turnrad+np.arctan2(racers[0].carvy,racers[0].carvx)
             lines[-1].set(xdata=[racers[0].carx,racers[0].carx+np.cos(max_angle)], ydata=[racers[0].cary,racers[0].cary+np.sin(max_angle)])
         
+        if all(racer.done for racer in racers):
+            plt.close()
+
         return lines + [L]
     
     anim = animation.FuncAnimation(fig, animate, init_func=init, frames=counter, interval=5, blit=True, repeat=False)
@@ -589,6 +593,11 @@ def newrun(actors, obstacles=True, turn_limit=True, chicanes=True, low_speed_ter
             print("Carn N.{} went to the wrong direction".format(i+1))
         if racer.completation == 4:
             print("Carn N.{} went under speed limits".format(i+1))
+
+    try:
+        return names[podium[0]]
+    except:
+        return "None"
     
   
 # launches runs_num evaluations episodes with no plots and measures average steps and rewards   
